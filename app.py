@@ -2162,7 +2162,7 @@ def make_key_findings(code, year):
 
 app = Dash(
     __name__,
-    assets_folder=str(Path(__file__).resolve().parent / "KPI Image"),
+    assets_folder=str(Path(__file__).resolve().parent / "assets"),
     title="Philippine National Health Account Dashboard",
     suppress_callback_exceptions=True,
 )
@@ -2910,6 +2910,27 @@ app.index_string = """
 </html>
 """
 
+# Resolve icon URLs through Dash so they keep working when the app is hosted
+# under a prefixed path, such as Posit Connect Cloud.
+KPI_ICON_FILES = [
+    "KPI1-THE.png",
+    "KPI2-CHE.png",
+    "KPI3-HK.png",
+    "KPI4-PHC.png",
+    "KPI5-PERCAPITA.png",
+    "KPI6 - Government FSRI.png",
+    "KPI7 - Household HF.png",
+    "KPI8 - Hospitals HP.png",
+    "KPI9 - Curative HC.png",
+    "KPI10 - NCR Region.png",
+]
+for icon_file in KPI_ICON_FILES:
+    encoded_file = icon_file.replace(" ", "%20")
+    app.index_string = app.index_string.replace(
+        f'url("/assets/{encoded_file}")',
+        f'url("{app.get_asset_url(icon_file)}")',
+    )
+
 
 # ============================================================
 # 13. SIDEBAR NAVIGATION
@@ -2954,7 +2975,7 @@ app.layout = html.Div(
                 html.Div(
                     [
                         html.Img(
-                            src="/assets/PNHA%20Icon.png?v=2",
+                            src=app.get_asset_url("PNHA Icon.png"),
                             alt="Philippine National Health Accounts logo",
                             className="brand-icon",
                         ),
