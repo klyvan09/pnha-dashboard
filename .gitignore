@@ -1,0 +1,7 @@
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+dashboard_stdout.log
+dashboard_stderr.log
+app_backup_*.py
