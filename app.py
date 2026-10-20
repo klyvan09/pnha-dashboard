@@ -3355,6 +3355,16 @@ app.layout = html.Div(
                     storage_type="memory",
                 ),
                 dcc.Store(
+                    id="che-preloaded-views",
+                    data=None,
+                    storage_type="memory",
+                ),
+                dcc.Store(
+                    id="metric-preloaded-views",
+                    data=None,
+                    storage_type="memory",
+                ),
+                dcc.Store(
                     id="kpi-carousel-position",
                     data=0,
                     storage_type="memory",
@@ -3710,6 +3720,95 @@ def toggle_che_stack_year(click_data, focused_year, start_year, end_year):
 # ============================================================
 
 @app.callback(
+    Output("che-preloaded-views", "data"),
+    Input("start-year", "value"),
+    Input("end-year", "value"),
+    Input("che-stack-focused-year", "data"),
+)
+def preload_che_classification_views(start_year, end_year, focused_year):
+    """Build every stacked chart in advance so classification changes are client-side."""
+    start_year = start_year if start_year in YEARS else YEARS[0]
+    end_year = end_year if end_year in YEARS else YEARS[-1]
+    if start_year > end_year:
+        start_year, end_year = end_year, start_year
+    if focused_year not in selected_years(start_year, end_year):
+        focused_year = None
+
+    return {
+        code: make_che_stack_chart(
+            code,
+            start_year,
+            end_year,
+            focused_year,
+        ).to_dict()
+        for code in CHE_CODES
+    }
+
+
+app.clientside_callback(
+    """function(classificationCode, preloadedViews) {
+        if (!preloadedViews || !preloadedViews[classificationCode]) {
+            return window.dash_clientside.no_update;
+        }
+        return preloadedViews[classificationCode];
+    }""",
+    Output("che-stack-chart", "figure"),
+    Input("selected-che-classification", "data"),
+    Input("che-preloaded-views", "data"),
+)
+
+
+@app.callback(
+    Output("metric-preloaded-views", "data"),
+    Input("start-year", "value"),
+    Input("end-year", "value"),
+)
+def preload_metric_views(start_year, end_year):
+    """Build all metric chart pairs ahead of time for immediate client-side switching."""
+    start_year = start_year if start_year in YEARS else YEARS[0]
+    end_year = end_year if end_year in YEARS else YEARS[-1]
+    if start_year > end_year:
+        start_year, end_year = end_year, start_year
+    return {
+        code: {
+            "levels": make_metric_levels(code, start_year, end_year).to_dict(),
+            "growth": make_metric_growth(code, start_year, end_year).to_dict(),
+        }
+        for code in METRIC_SERIES
+    }
+
+
+app.clientside_callback(
+    """function(metricCode, preloadedViews) {
+        if (!preloadedViews || !preloadedViews[metricCode]) {
+            return [window.dash_clientside.no_update, window.dash_clientside.no_update];
+        }
+        return [preloadedViews[metricCode].levels, preloadedViews[metricCode].growth];
+    }""",
+    Output("metric-levels-chart", "figure"),
+    Output("metric-growth-chart", "figure"),
+    Input("selected-metric", "data"),
+    Input("metric-preloaded-views", "data"),
+)
+
+
+@app.callback(
+    Output("che-analysis-text", "children"),
+    Input("selected-che-classification", "data"),
+    Input("start-year", "value"),
+    Input("end-year", "value"),
+)
+def update_che_analysis_text(classification_code, start_year, end_year):
+    if classification_code not in CHE_CODES:
+        classification_code = "FS"
+    start_year = start_year if start_year in YEARS else YEARS[0]
+    end_year = end_year if end_year in YEARS else YEARS[-1]
+    if start_year > end_year:
+        start_year, end_year = end_year, start_year
+    return make_che_analysis_text(classification_code, start_year, end_year)
+
+
+@app.callback(
     Output("kpi-the", "children"),
     Output("kpi-che", "children"),
     Output("kpi-hk", "children"),
@@ -3735,28 +3834,10 @@ def toggle_che_stack_year(click_data, focused_year, start_year, end_year):
     Output("kpi-ncr-share", "children"),
     Output("kpi-ncr-level", "children"),
     Output("kpi-ncr-year", "children"),
-    Output("metric-levels-chart", "figure"),
-    Output("metric-growth-chart", "figure"),
-    Output("che-stack-chart", "figure"),
-    Output("che-analysis-text", "children"),
-    Input("selected-metric", "data"),
-    Input("selected-che-classification", "data"),
     Input("start-year", "value"),
     Input("end-year", "value"),
-    Input("che-stack-focused-year", "data"),
 )
-def update_dashboard(
-    selected_metric,
-    selected_classification,
-    start_year,
-    end_year,
-    focused_stack_year,
-):
-    if selected_metric not in METRIC_SERIES:
-        selected_metric = "THE"
-    if selected_classification not in CHE_CODES:
-        selected_classification = "FS"
-
+def update_dashboard(start_year, end_year):
     if start_year is None:
         start_year = YEARS[0]
 
@@ -3767,9 +3848,6 @@ def update_dashboard(
         start_year, end_year = end_year, start_year
 
     selected_year = end_year
-
-    if focused_stack_year not in selected_years(start_year, end_year):
-        focused_stack_year = None
 
     # KPI VALUES
     che = float(CHE_SERIES.get(selected_year, 0.0))
@@ -3794,15 +3872,6 @@ def update_dashboard(
             str(selected_year),
         ])
 
-    levels_fig = make_metric_levels(selected_metric, start_year, end_year)
-    growth_fig = make_metric_growth(selected_metric, start_year, end_year)
-    che_stack_fig = make_che_stack_chart(
-        selected_classification,
-        start_year,
-        end_year,
-        focused_stack_year,
-    )
-
     return (
         format_kpi_amount(the),
         format_kpi_amount(che),
@@ -3815,10 +3884,6 @@ def update_dashboard(
         str(selected_year),
         str(selected_year),
         *focus_kpi_values,
-        levels_fig,
-        growth_fig,
-        che_stack_fig,
-        make_che_analysis_text(selected_classification, start_year, end_year),
     )
 
 
