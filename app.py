@@ -17,6 +17,7 @@
 from pathlib import Path
 from math import ceil, floor, log10
 import re
+import textwrap
 
 import pandas as pd
 import plotly.graph_objects as go
@@ -1417,6 +1418,153 @@ def make_che_stack_chart(classification_code, start_year, end_year, focused_year
     )
     return fig
 
+
+def make_che_contribution_chart(classification_code, start_year, end_year):
+    """Show the largest category-level peso changes between selected years."""
+    if classification_code not in CHE_CODES:
+        classification_code = "FS"
+    if start_year not in YEARS:
+        start_year = YEARS[0]
+    if end_year not in YEARS:
+        end_year = YEARS[-1]
+    if start_year > end_year:
+        start_year, end_year = end_year, start_year
+
+    subtitle = (
+        f"{STACK_CLASSIFICATION_LABELS[classification_code]} · "
+        f"{start_year}–{end_year} · PhP billion"
+    )
+    if start_year == end_year:
+        fig = make_empty_figure("Choose two different years to compare changes.")
+        return add_chart_heading(fig, "What drove the change?", subtitle)
+
+    start_data = get_raw_category_data(classification_code, start_year)
+    end_data = get_raw_category_data(classification_code, end_year)
+    if start_data.empty and end_data.empty:
+        fig = make_empty_figure("No data available for this comparison.")
+        return add_chart_heading(fig, "What drove the change?", subtitle)
+
+    start_amounts = start_data.set_index("Category")["Amount"].astype(float)
+    end_amounts = end_data.set_index("Category")["Amount"].astype(float)
+    categories = start_amounts.index.union(end_amounts.index)
+    changes = (
+        end_amounts.reindex(categories).fillna(0.0)
+        - start_amounts.reindex(categories).fillna(0.0)
+    )
+    ranked = sorted(changes.items(), key=lambda item: abs(item[1]), reverse=True)
+    selected = ranked[:6]
+    remaining = ranked[6:]
+    if remaining:
+        remaining_change = sum(value for _, value in remaining)
+        if abs(remaining_change) > 1e-9:
+            selected.append(("Remaining categories (net)", remaining_change))
+
+    selected = [(category, value) for category, value in selected if abs(value) > 1e-9]
+    if not selected:
+        fig = make_empty_figure("No change between these years.")
+        return add_chart_heading(fig, "What drove the change?", subtitle)
+
+    category_labels = [category for category, _ in selected]
+    values_by_category = dict(selected)
+    start_by_category = start_amounts.to_dict()
+    end_by_category = end_amounts.to_dict()
+
+    fig = go.Figure()
+    for name, is_increase, color in (
+        ("Increase", True, "#4C9F38"),
+        ("Decrease", False, "#F2B66D"),
+    ):
+        rows = [
+            category for category in category_labels
+            if (values_by_category[category] > 0) == is_increase
+        ]
+        if not rows:
+            continue
+        deltas = [values_by_category[category] / 1000 for category in rows]
+        fig.add_trace(go.Bar(
+            x=deltas,
+            y=rows,
+            orientation="h",
+            name=name,
+            marker_color=color,
+            text=[f"{'+' if value > 0 else '−'}₱{abs(value):,.1f}B" for value in deltas],
+            textposition="outside",
+            cliponaxis=False,
+            customdata=[
+                [
+                    start_by_category.get(category, 0.0) / 1000,
+                    end_by_category.get(category, 0.0) / 1000,
+                ]
+                for category in rows
+            ],
+            hovertemplate=(
+                "<b>%{y}</b><br>"
+                f"Change ({start_year}–{end_year}): "
+                "PhP %{x:+,.1f} billion<br>"
+                f"{start_year}: PhP %{{customdata[0]:,.1f}} billion<br>"
+                f"{end_year}: PhP %{{customdata[1]:,.1f}} billion"
+                "<extra></extra>"
+            ),
+        ))
+
+    largest_change = max(abs(value / 1000) for _, value in selected)
+    axis_limit = max(largest_change * 1.35, 1.0)
+    # Keep the category labels in a fixed left column and reserve the
+    # remaining two-thirds of the plot width for the bars.
+    def two_line_label(label):
+        return "<br>".join(textwrap.wrap(
+            str(label),
+            width=27,
+            max_lines=2,
+            placeholder="…",
+            break_long_words=False,
+            break_on_hyphens=False,
+        ))
+
+    fig.update_layout(
+        barmode="overlay",
+        showlegend=True,
+        legend=dict(
+            orientation="h", yanchor="top", y=-0.20,
+            xanchor="left", x=0,
+        ),
+        margin=dict(l=18, r=22, t=64, b=75),
+    )
+    fig = apply_chart_style(fig)
+    for category in category_labels:
+        fig.add_annotation(
+            x=0.315,
+            y=category,
+            xref="paper",
+            yref="y",
+            text=two_line_label(category),
+            showarrow=False,
+            xanchor="right",
+            yanchor="middle",
+            align="right",
+            font=dict(size=11, color="#e6edf7"),
+        )
+    fig.update_xaxes(
+        domain=[1 / 3, 1],
+        title_text="Change (PhP billion)",
+        range=[-axis_limit, axis_limit],
+        showgrid=True,
+        gridcolor="#3b4f6c",
+        zeroline=True,
+        zerolinecolor="#e6edf7",
+        zerolinewidth=2,
+    )
+    fig.update_yaxes(
+        categoryorder="array",
+        categoryarray=category_labels,
+        autorange="reversed",
+        showgrid=False,
+        showticklabels=False,
+        automargin=False,
+    )
+    return add_chart_heading(fig, "What drove the change?", subtitle, top_margin=64)
+
+
 def make_the_trend(start_year, end_year, view, selected_measure="THE"):
     years = [
         year for year in YEARS
@@ -2625,15 +2773,88 @@ app.index_string = """
             grid-template-columns: repeat(2, minmax(0, 1fr));
             grid-template-rows: minmax(0, 1fr) minmax(0, 1.25fr);
             grid-template-areas:
-                "levels growth"
+                "metric contribution"
                 "che-stack che-stack";
             gap: 12px;
             align-items: stretch;
             min-height: 0;
         }
 
-        .chart-levels { grid-area: levels; }
-        .chart-growth { grid-area: growth; }
+        .chart-metric { grid-area: metric; position: relative; }
+        .chart-contribution { grid-area: contribution; position: relative; }
+        .contribution-year-control {
+            position: absolute;
+            z-index: 10;
+            top: 10px;
+            right: 14px;
+            width: 78px;
+        }
+        .chart-contribution .contribution-year-dropdown {
+            width: 78px !important;
+            height: 29px !important;
+            min-height: 29px !important;
+            flex: 0 0 78px !important;
+            padding: 0 !important;
+            border: 1px solid #6b93bc !important;
+            border-radius: 8px !important;
+            background: #172f4d !important;
+            color: #f3f6fa !important;
+            font: 600 12px Arial, sans-serif !important;
+            box-sizing: border-box;
+            outline: none !important;
+        }
+        .chart-contribution .contribution-year-dropdown .dash-dropdown-trigger {
+            height: 27px !important;
+            min-height: 27px !important;
+            padding: 0 8px !important;
+            font: 600 12px Arial, sans-serif !important;
+        }
+        .chart-contribution .contribution-year-dropdown .dash-dropdown-value {
+            color: #f3f6fa !important;
+            font: 600 12px Arial, sans-serif !important;
+            text-align: center !important;
+        }
+        .chart-contribution .contribution-year-dropdown .dash-dropdown-trigger-icon {
+            color: #f3f6fa !important;
+            fill: #f3f6fa !important;
+        }
+        .chart-contribution .contribution-year-dropdown:hover,
+        .chart-contribution .contribution-year-dropdown:focus,
+        .chart-contribution .contribution-year-dropdown:focus-within {
+            background: #4C9F38 !important;
+            border-color: #86BF75 !important;
+            outline: none !important;
+        }
+        .chart-contribution .contribution-year-dropdown:focus {
+            border: 1px solid #86BF75 !important;
+            outline: none !important;
+        }
+        .chart-contribution .Select-menu-outer { z-index: 9999; }
+        .chart-contribution .Select-option:hover,
+        .chart-contribution .Select-option.is-focused,
+        .chart-contribution .Select-option.is-selected {
+            color: #ffffff !important;
+            background-color: #4C9F38 !important;
+        }
+        .chart-view-toggle {
+            position: absolute;
+            z-index: 10;
+            top: 10px;
+            right: 14px;
+            border: 1px solid #6b93bc;
+            border-radius: 8px;
+            padding: 6px 12px;
+            background: #172f4d;
+            color: #f3f6fa;
+            font: 600 12px Arial, sans-serif;
+            cursor: pointer;
+        }
+        .chart-view-toggle:hover,
+        .chart-view-toggle:focus-visible {
+            background: #4C9F38;
+            border-color: #86BF75;
+            outline: none;
+        }
         .chart-che-stack {
             grid-area: che-stack;
             display: flex;
@@ -2664,18 +2885,26 @@ app.index_string = """
             display: flex;
             align-items: center;
             min-width: 0;
-            min-height: 53px;
+            height: calc(2.7em + 20px);
             flex: 0 0 auto;
+            overflow: hidden;
             margin: 0 12px 0;
             padding: 10px 12px;
-            color: #A6DDF7;
-            background: transparent;
+            color: #C4EBFF;
+            background: linear-gradient(
+                90deg,
+                rgba(137, 211, 243, 0.14) 0%,
+                rgba(137, 211, 243, 0.08) 68%,
+                rgba(137, 211, 243, 0.02) 100%
+            );
             border: 0;
-            border-radius: 0;
-            font-size: calc(12px + 4pt);
-            line-height: 1.4;
+            border-radius: 8px;
+            font-size: calc(12px + 6pt);
+            font-weight: 500;
+            line-height: 1.35;
             text-align: justify;
         }
+        .stack-analysis-text > * { width: 100%; }
 
         .chart-card:hover {
             transform: translateY(-2px);
@@ -2828,7 +3057,7 @@ app.index_string = """
             .dashboard-grid {
                 grid-template-columns: minmax(0, 1fr);
                 grid-template-rows: repeat(3, minmax(110px, 1fr));
-                grid-template-areas: "levels" "growth" "che-stack";
+                grid-template-areas: "metric" "contribution" "che-stack";
             }
 
             .kpi-card {
@@ -2974,8 +3203,9 @@ app.index_string = """
         }
         .chart-card { border-radius: clamp(8px, 0.65vw, 12px); }
         .stack-analysis-text {
-            font-size: clamp(13px, calc(0.36vw + 7px), 17px);
+            font-size: calc(clamp(13px, calc(0.36vw + 7px), 17px) + 2pt);
             line-height: 1.35;
+            height: calc(2.7em + 20px);
         }
         .footer {
             font-size: clamp(9px, calc(0.18vw + 6px), 11px);
@@ -3116,8 +3346,8 @@ app.index_string = """
             .dashboard-grid {
                 grid-template-rows: minmax(220px, 0.9fr) minmax(300px, 1.1fr);
             }
-            .chart-levels,
-            .chart-growth { min-height: 220px; }
+            .chart-metric,
+            .chart-contribution { min-height: 220px; }
             .chart-che-stack { min-height: 330px; }
         }
 
@@ -3140,14 +3370,15 @@ app.index_string = """
             .dashboard-grid {
                 grid-template-columns: minmax(0, 1fr);
                 grid-template-rows: minmax(230px, auto) minmax(230px, auto) minmax(360px, auto);
-                grid-template-areas: "levels" "growth" "che-stack";
+                grid-template-areas: "metric" "contribution" "che-stack";
             }
-            .chart-levels,
-            .chart-growth { min-height: 230px; }
+            .chart-metric,
+            .chart-contribution { min-height: 230px; }
             .chart-che-stack { min-height: 360px; }
             .stack-analysis-text {
-                font-size: 14px;
-                text-align: left;
+                font-size: calc(14px + 2pt);
+                text-align: justify;
+                height: calc(2.7em + 16px);
                 margin: 0 6px;
                 padding: 8px 6px;
             }
@@ -3345,6 +3576,11 @@ app.layout = html.Div(
                     storage_type="memory",
                 ),
                 dcc.Store(
+                    id="metric-view-mode",
+                    data="levels",
+                    storage_type="memory",
+                ),
+                dcc.Store(
                     id="selected-che-classification",
                     data="FS",
                     storage_type="memory",
@@ -3356,6 +3592,11 @@ app.layout = html.Div(
                 ),
                 dcc.Store(
                     id="che-preloaded-views",
+                    data=None,
+                    storage_type="memory",
+                ),
+                dcc.Store(
+                    id="che-contribution-preloaded-views",
                     data=None,
                     storage_type="memory",
                 ),
@@ -3510,22 +3751,48 @@ app.layout = html.Div(
                     className="dashboard-grid",
                     children=[
                         html.Div(
-                            dcc.Graph(
-                                id="metric-levels-chart",
-                                config={"displayModeBar": False},
-                                responsive=True,
-                                style={"height": "100%"},
-                            ),
-                            className="chart-card chart-levels",
+                            className="chart-card chart-metric",
+                            children=[
+                                html.Button(
+                                    "Levels",
+                                    id="metric-view-toggle",
+                                    n_clicks=0,
+                                    className="chart-view-toggle",
+                                    title="Switch between expenditure levels and growth rate",
+                                ),
+                                dcc.Graph(
+                                    id="metric-chart",
+                                    config={"displayModeBar": False},
+                                    responsive=True,
+                                    style={"height": "100%"},
+                                ),
+                            ],
                         ),
                         html.Div(
-                            dcc.Graph(
-                                id="metric-growth-chart",
-                                config={"displayModeBar": False},
-                                responsive=True,
-                                style={"height": "100%"},
-                            ),
-                            className="chart-card chart-growth",
+                            children=[
+                                html.Div(
+                                    dcc.Dropdown(
+                                        id="che-contribution-year",
+                                        options=[
+                                            {"label": str(year), "value": year}
+                                            for year in YEARS[1:]
+                                        ],
+                                        value=YEARS[-1],
+                                        clearable=False,
+                                        searchable=False,
+                                        className="contribution-year-dropdown",
+                                    ),
+                                    className="contribution-year-control",
+                                    title="Compare the selected year with the previous year",
+                                ),
+                                dcc.Graph(
+                                    id="che-contribution-chart",
+                                    config={"displayModeBar": False},
+                                    responsive=True,
+                                    style={"height": "100%"},
+                                ),
+                            ],
+                            className="chart-card chart-contribution",
                         ),
                         html.Div(
                             children=[
@@ -3779,16 +4046,61 @@ def preload_metric_views(start_year, end_year):
 
 
 app.clientside_callback(
-    """function(metricCode, preloadedViews) {
+    """function(metricCode, viewMode, preloadedViews) {
         if (!preloadedViews || !preloadedViews[metricCode]) {
-            return [window.dash_clientside.no_update, window.dash_clientside.no_update];
+            return window.dash_clientside.no_update;
         }
-        return [preloadedViews[metricCode].levels, preloadedViews[metricCode].growth];
+        var view = viewMode === "growth" ? "growth" : "levels";
+        return preloadedViews[metricCode][view] || window.dash_clientside.no_update;
     }""",
-    Output("metric-levels-chart", "figure"),
-    Output("metric-growth-chart", "figure"),
+    Output("metric-chart", "figure"),
     Input("selected-metric", "data"),
+    Input("metric-view-mode", "data"),
     Input("metric-preloaded-views", "data"),
+)
+
+
+@app.callback(
+    Output("che-contribution-preloaded-views", "data"),
+    Input("che-contribution-year", "value"),
+)
+def preload_che_contribution_views(year):
+    """Prepare every classification for the selected year-over-year comparison."""
+    year = year if year in YEARS[1:] else YEARS[-1]
+    return {
+        code: make_che_contribution_chart(code, year - 1, year).to_dict()
+        for code in CHE_CODES
+    }
+
+
+app.clientside_callback(
+    """function(classificationCode, preloadedViews) {
+        if (!preloadedViews || !preloadedViews[classificationCode]) {
+            return window.dash_clientside.no_update;
+        }
+        return preloadedViews[classificationCode];
+    }""",
+    Output("che-contribution-chart", "figure"),
+    Input("selected-che-classification", "data"),
+    Input("che-contribution-preloaded-views", "data"),
+)
+
+
+app.clientside_callback(
+    """function(clicks) {
+        return ((clicks || 0) % 2) ? "growth" : "levels";
+    }""",
+    Output("metric-view-mode", "data"),
+    Input("metric-view-toggle", "n_clicks"),
+)
+
+
+app.clientside_callback(
+    """function(viewMode) {
+        return viewMode === "growth" ? "Growth rate" : "Levels";
+    }""",
+    Output("metric-view-toggle", "children"),
+    Input("metric-view-mode", "data"),
 )
 
 
