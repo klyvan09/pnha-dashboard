@@ -118,12 +118,12 @@ CHE_ANALYSIS_FOCUS = {
         "Transfers from government domestic revenue (allocated to health purposes)",
         "Transfers from government domestic revenue (allocated to health purposes)",
     ),
-    "FSRI": ("Government", "Government"),
-    "FA": ("Households", "Households"),
+    "FSRI": ("Households", "Households"),
+    "FA": ("Social security agency", "Social security agency"),
     "HF": ("Household out-of-pocket payment", "Household out-of-pocket payment"),
     "FP": ("Consumption of fixed capital", "Consumption of fixed capital"),
     "HP": ("Providers of preventive care", "Providers of preventive care"),
-    "HC": ("Curative care", "Curative care"),
+    "HC": ("Preventive care", "Preventive care"),
     "AGESEX": ("65 and over", "Age 65 and over"),
     "DIS": ("Noncommunicable diseases", "Noncommunicable diseases"),
     "REG": ("NCR", "NCR"),
@@ -138,15 +138,7 @@ CHE_ANALYSIS_ALIASES = {
     "DIS": ["Noncommunicable diseases", "Non-communicable diseases"],
 }
 
-CHE_ANALYSIS_SECONDARY = {
-    "FS": ["Other domestic revenues"],
-    "FSRI": ["Households"],
-    "FA": ["Central government"],
-    "HF": ["Government schemes"],
-    "FP": ["Materials and services used"],
-    "HP": ["Hospitals"],
-    "HC": ["Preventive care"],
-}
+CHE_ANALYSIS_SECONDARY = {}
 
 TOP_REGIONS_TO_SHOW = 7
 TOP_CATEGORIES_TO_SHOW = 7
@@ -710,28 +702,19 @@ def make_che_analysis_text(classification_code, start_year, end_year):
     span = f"{first_year}–{last_year}"
 
     if classification_code == "FS":
-        transfer = series_for("FS", CHE_ANALYSIS_FOCUS["FS"][0])
-        other_revenues = series_for("FS", "Other domestic revenues")
-        transfer_shares = pd.Series({y: amount_share("FS", CHE_ANALYSIS_FOCUS["FS"][0], y)[1] for y in analysis_years})
-        other_shares = pd.Series({y: amount_share("FS", "Other domestic revenues", y)[1] for y in analysis_years})
-        transfer_growth = (transfer[last_year] / transfer[first_year] - 1) * 100 if transfer[first_year] else 0
-        other_growth = (other_revenues[last_year] / other_revenues[first_year] - 1) * 100 if other_revenues[first_year] else 0
-        transfer_trend = "rose" if transfer[last_year] >= transfer[first_year] else "fell"
-        other_trend = "rose" if other_revenues[last_year] >= other_revenues[first_year] else "fell"
-        transfer_share_trend = "rose" if transfer_shares[last_year] >= transfer_shares[first_year] else "fell"
-        other_share_trend = "fell" if other_shares[last_year] <= other_shares[first_year] else "rose"
-        transfer_gap_start = other_shares[first_year] - transfer_shares[first_year]
-        transfer_gap_end = other_shares[last_year] - transfer_shares[last_year]
+        government_shares = pd.Series({
+            year: amount_share("FS", CHE_ANALYSIS_FOCUS["FS"][0], year)[1]
+            for year in analysis_years
+        })
+        first_share = government_shares[first_year]
+        last_share = government_shares[last_year]
         return html.Span([
-            strong("Government transfers and Other Domestic Revenues"),
-            f": government transfers {transfer_trend} from {format_amount(transfer[first_year])} in {first_year} "
-            f"to {format_amount(transfer[last_year])} in {last_year} ({transfer_growth:+.1f}%), compared with "
-            f"Other Domestic Revenues, which {other_trend} from {format_amount(other_revenues[first_year])} "
-            f"to {format_amount(other_revenues[last_year])} ({other_growth:+.1f}%). The transfer’s share "
-            f"of total FS revenues {transfer_share_trend} from {transfer_shares[first_year]:.1f}% to "
-            f"{transfer_shares[last_year]:.1f}%, while Other Domestic Revenues’ share {other_share_trend} "
-            f"from {other_shares[first_year]:.1f}% to {other_shares[last_year]:.1f}%; the gap narrowed "
-            f"from {transfer_gap_start:.1f} to {transfer_gap_end:.1f} percentage points.",
+            strong("Government funding"),
+            f" made up a bigger part of health spending. In {first_year}, "
+            f"about {first_share:.0f} pesos out of every 100 spent on health "
+            f"came from government funding ({first_share:.1f}%). By {last_year}, "
+            f"this rose to about {last_share:.0f} pesos out of every 100 "
+            f"({last_share:.1f}%).",
         ])
     if classification_code in {"FSRI", "FA"}:
         government = series_for(classification_code, "Government" if classification_code == "FSRI" else "General government")
@@ -743,40 +726,31 @@ def make_che_analysis_text(classification_code, start_year, end_year):
         intervals = max(len(analysis_years) - 1, 0)
         if classification_code == "FSRI":
             return html.Span([
-                strong("Government and household funding"),
-                f": government funding rose from {format_amount(government[first_year])} in {first_year} "
-                f"to {format_amount(government[last_year])} in {last_year}, outpacing household "
-                f"funding, which rose from {format_amount(household[first_year])} to "
-                f"{format_amount(household[last_year])}. Government’s share of CHE increased "
-                f"from {gov_shares[first_year]:.1f}% to {gov_shares[last_year]:.1f}%, while "
-                f"the household share shrank from {hh_shares[first_year]:.1f}% to "
-                f"{hh_shares[last_year]:.1f}%.",
+                strong("Households"),
+                " provided a large share of the money for health care. Their share "
+                f"fell from {hh_shares[first_year]:.1f}% in {first_year} to "
+                f"{hh_shares[last_year]:.1f}% in {last_year}. In everyday terms, "
+                f"households contributed about {hh_shares[first_year]:.0f} pesos "
+                f"out of every 100 spent on health in {first_year}, compared with "
+                f"about {hh_shares[last_year]:.0f} pesos in {last_year}.",
             ])
         if classification_code == "FA":
-            central_government = series_for("FA", "Central government")
-            household_shares = pd.Series({y: household[y] / CHE_SERIES[y] * 100 for y in analysis_years})
-            central_shares = pd.Series({y: central_government[y] / CHE_SERIES[y] * 100 for y in analysis_years})
-            household_growth = (household[last_year] / household[first_year] - 1) * 100 if household[first_year] else 0
-            central_growth = (central_government[last_year] / central_government[first_year] - 1) * 100 if central_government[first_year] else 0
-            household_trend = "rose" if household[last_year] >= household[first_year] else "fell"
-            central_trend = "rose" if central_government[last_year] >= central_government[first_year] else "fell"
-            household_share_trend = "fell" if household_shares[last_year] < household_shares[first_year] else "rose"
-            central_share_trend = "rose" if central_shares[last_year] > central_shares[first_year] else "fell"
-            central_gap_start = round(household_shares[first_year], 1) - round(central_shares[first_year], 1)
-            central_gap_end = round(household_shares[last_year], 1) - round(central_shares[last_year], 1)
-            relative_growth = "faster than" if central_growth > household_growth else "slower than" if central_growth < household_growth else "at the same rate as"
-            gap_trend = "narrowed" if central_gap_end < central_gap_start else "widened" if central_gap_end > central_gap_start else "held steady"
+            social_security = series_for("FA", "Social security agency")
+            social_security_shares = pd.Series({
+                y: social_security[y] / CHE_SERIES[y] * 100 if CHE_SERIES[y] else 0.0
+                for y in analysis_years
+            })
+            rising_intervals = sum(
+                social_security_shares[y] > social_security_shares[analysis_years[i - 1]]
+                for i, y in enumerate(analysis_years) if i > 0
+            )
+            intervals = max(len(analysis_years) - 1, 0)
+            trend = "increased" if social_security_shares[last_year] >= social_security_shares[first_year] else "decreased"
             return html.Span([
-                strong("Households and Central Government as financing agents"),
-                f": household financing {household_trend} from {format_amount(household[first_year])} in {first_year} "
-                f"to {format_amount(household[last_year])} in {last_year} ({household_growth:+.1f}%), while "
-                f"Central Government {central_trend} from {format_amount(central_government[first_year])} to "
-                f"{format_amount(central_government[last_year])} ({central_growth:+.1f}%). Central Government "
-                f"funding grew {relative_growth} household financing. Household share of CHE {household_share_trend} "
-                f"from {household_shares[first_year]:.1f}% to {household_shares[last_year]:.1f}%, while Central "
-                f"Government share {central_share_trend} from {central_shares[first_year]:.1f}% to "
-                f"{central_shares[last_year]:.1f}%; the share gap {gap_trend} from {central_gap_start:.1f} "
-                f"to {central_gap_end:.1f} percentage points.",
+                strong("Social security agencies, including PhilHealth,"),
+                f" made up a {trend} share of total health spending, "
+                f"from {social_security_shares[first_year]:.1f}% in {first_year} "
+                f"to {social_security_shares[last_year]:.1f}% in {last_year}.",
             ])
         label = "Government" if classification_code == "FSRI" else "General government"
         classification_name = "institutional units providing revenues" if classification_code == "FSRI" else "financing agents"
@@ -790,85 +764,48 @@ def make_che_analysis_text(classification_code, start_year, end_year):
         ])
 
     if classification_code == "HF":
-        government = series_for("HF", "Government schemes")
-        household = series_for("HF", CHE_ANALYSIS_FOCUS["HF"][0])
-        gov_shares = pd.Series({y: government[y] / CHE_SERIES[y] * 100 for y in analysis_years})
-        hh_shares = pd.Series({y: household[y] / CHE_SERIES[y] * 100 for y in analysis_years})
-        gov_growth = (government[last_year] / government[first_year] - 1) * 100 if government[first_year] else 0
-        hh_growth = (household[last_year] / household[first_year] - 1) * 100 if household[first_year] else 0
-        gov_share_trend = "rose" if gov_shares[last_year] >= gov_shares[first_year] else "fell"
-        hh_share_trend = "fell" if hh_shares[last_year] <= hh_shares[first_year] else "rose"
-        relative_growth = "faster" if gov_growth > hh_growth else "slower" if gov_growth < hh_growth else "at the same rate as"
+        household_oop = series_for("HF", CHE_ANALYSIS_FOCUS["HF"][0])
+        oop_shares = pd.Series({
+            y: household_oop[y] / CHE_SERIES[y] * 100 if CHE_SERIES[y] else 0.0
+            for y in analysis_years
+        })
         return html.Span([
-            strong("Government schemes and household out-of-pocket payments"),
-            f": government scheme funding changed from {format_amount(government[first_year])} in {first_year} "
-            f"to {format_amount(government[last_year])} in {last_year} ({gov_growth:+.1f}%), growing {relative_growth} "
-            f"than household out-of-pocket funding ({hh_growth:+.1f}%). Government schemes’ share of CHE "
-            f"{gov_share_trend} from {gov_shares[first_year]:.1f}% to {gov_shares[last_year]:.1f}%, while "
-            f"household out-of-pocket share {hh_share_trend} from {hh_shares[first_year]:.1f}% "
-            f"to {hh_shares[last_year]:.1f}%.",
+            strong("Household out-of-pocket payments"),
+            f" accounted for {oop_shares[first_year]:.1f}% of total health spending in {first_year} "
+            f"and {oop_shares[last_year]:.1f}% in {last_year}.",
         ])
     if classification_code == "FP":
         fixed_capital = series_for("FP", CHE_ANALYSIS_FOCUS["FP"][0])
-        materials = series_for("FP", "Materials and services used")
-        fixed_share = pd.Series({y: fixed_capital[y] / CHE_SERIES[y] * 100 for y in analysis_years})
-        material_share = pd.Series({y: materials[y] / CHE_SERIES[y] * 100 for y in analysis_years})
-        fixed_share_trend = "fell" if fixed_share[last_year] < fixed_share[first_year] else "rose"
-        material_share_trend = "rose" if material_share[last_year] > material_share[first_year] else "fell"
-        fixed_level_trend = "rose" if fixed_capital[last_year] > fixed_capital[first_year] else "fell"
-        materials_level_trend = "rose" if materials[last_year] > materials[first_year] else "fell"
+        fixed_share = pd.Series({
+            y: fixed_capital[y] / CHE_SERIES[y] * 100 if CHE_SERIES[y] else 0.0
+            for y in analysis_years
+        })
         return html.Span([
-            strong("Consumption of fixed capital and materials and services used"),
-            f": consumption of fixed capital’s share of CHE {fixed_share_trend} from "
-            f"{fixed_share[first_year]:.1f}% in {first_year} to {fixed_share[last_year]:.1f}% "
-            f"in {last_year}, even as its level {fixed_level_trend} from {format_amount(fixed_capital[first_year])} "
-            f"to {format_amount(fixed_capital[last_year])}. The share for materials and services used "
-            f"{material_share_trend} from {material_share[first_year]:.1f}% to "
-            f"{material_share[last_year]:.1f}%, while its level {materials_level_trend} from "
-            f"{format_amount(materials[first_year])} to {format_amount(materials[last_year])}. "
-            f"Together, the share trends show CHE shifting toward materials and services relative to "
-            f"fixed-capital consumption; a declining share does not mean CFC spending fell in level terms.",
+            strong("Consumption of fixed capital"),
+            f" accounted for {fixed_share[first_year]:.1f}% of total health expenditure in {first_year} "
+            f"and {fixed_share[last_year]:.1f}% in {last_year}, showing an overall decline in its share.",
         ])
     if classification_code == "HP":
         preventive = series_for("HP", CHE_ANALYSIS_FOCUS["HP"][0])
-        hospitals = series_for("HP", "Hospitals")
-        preventive_share = pd.Series({y: preventive[y] / CHE_SERIES[y] * 100 for y in analysis_years})
-        hospital_share = pd.Series({y: hospitals[y] / CHE_SERIES[y] * 100 for y in analysis_years})
-        preventive_share_trend = "fell" if preventive_share[last_year] < preventive_share[first_year] else "rose" if preventive_share[last_year] > preventive_share[first_year] else "held steady"
-        hospital_share_trend = "fell" if hospital_share[last_year] < hospital_share[first_year] else "rose" if hospital_share[last_year] > hospital_share[first_year] else "held steady"
-        preventive_growth = pct_change(preventive[first_year], preventive[last_year])
-        hospital_growth = pct_change(hospitals[first_year], hospitals[last_year])
+        preventive_share = pd.Series({
+            y: preventive[y] / CHE_SERIES[y] * 100 if CHE_SERIES[y] else 0.0
+            for y in analysis_years
+        })
         return html.Span([
-            strong("Providers of preventive care and hospitals"),
-            f": preventive-care providers’ spending changed from {format_amount(preventive[first_year])} "
-            f"in {first_year} to {format_amount(preventive[last_year])} in {last_year} "
-            f"({preventive_growth:+.1f}%), while its share of CHE {preventive_share_trend} "
-            f"from {preventive_share[first_year]:.1f}% to {preventive_share[last_year]:.1f}%. "
-            f"Hospital spending changed from {format_amount(hospitals[first_year])} to "
-            f"{format_amount(hospitals[last_year])} ({hospital_growth:+.1f}%), and its share "
-            f"{hospital_share_trend} from {hospital_share[first_year]:.1f}% to "
-            f"{hospital_share[last_year]:.1f}%. This compares the preventive-care provider share "
-            f"with hospitals over the selected period.",
+            strong("Providers of preventive care"),
+            f" accounted for {preventive_share[first_year]:.1f}% of total health expenditure in {first_year} "
+            f"and {preventive_share[last_year]:.1f}% in {last_year}, showing a decline in its share.",
         ])
     if classification_code == "HC":
-        curative = series_for("HC", "Curative care")
-        preventive = series_for("HC", "Preventive care")
-        curative_shares = pd.Series({y: curative[y] / CHE_SERIES[y] * 100 for y in analysis_years})
-        preventive_shares = pd.Series({y: preventive[y] / CHE_SERIES[y] * 100 for y in analysis_years})
-        curative_trend = "fell" if curative_shares[last_year] < curative_shares[first_year] else "rose" if curative_shares[last_year] > curative_shares[first_year] else "held steady"
-        preventive_trend = "fell" if preventive_shares[last_year] < preventive_shares[first_year] else "rose" if preventive_shares[last_year] > preventive_shares[first_year] else "held steady"
-        curative_change = curative_shares[last_year] - curative_shares[first_year]
-        preventive_change = preventive_shares[last_year] - preventive_shares[first_year]
+        preventive = series_for("HC", CHE_ANALYSIS_FOCUS["HC"][0])
+        preventive_shares = pd.Series({
+            y: preventive[y] / CHE_SERIES[y] * 100 if CHE_SERIES[y] else 0.0
+            for y in analysis_years
+        })
         return html.Span([
-            strong("Curative and preventive care shares of CHE"),
-            f": curative care’s share {curative_trend} from {curative_shares[first_year]:.1f}% "
-            f"in {first_year} to {curative_shares[last_year]:.1f}% in {last_year} "
-            f"({curative_change:+.1f} percentage points). Preventive care’s share {preventive_trend} "
-            f"from {preventive_shares[first_year]:.1f}% to {preventive_shares[last_year]:.1f}% "
-            f"({preventive_change:+.1f} percentage points). Curative care remained the larger share "
-            f"throughout the selected period, ranging from {curative_shares.min():.1f}% to "
-            f"{curative_shares.max():.1f}%, while preventive care ranged from "
-            f"{preventive_shares.min():.1f}% to {preventive_shares.max():.1f}%.",
+            strong("Preventive care"),
+            f" accounted for {preventive_shares[first_year]:.1f}% of total health expenditure in {first_year} "
+            f"and {preventive_shares[last_year]:.1f}% in {last_year}.",
         ])
     if classification_code == "AGESEX":
         focus = series_for("AGESEX", "65 and over")
@@ -1212,11 +1149,15 @@ def make_metric_levels(metric_code, start_year, end_year):
     fig.update_layout(xaxis_title="", yaxis_title=unit, showlegend=False)
     fig.update_xaxes(
         tickmode="array", tickvals=years,
-        ticktext=[str(year) for year in years], tickangle=-45,
+        ticktext=[str(year) for year in years], tickfont=dict(color="#FFFFFF"), tickangle=-45,
     )
     fig = apply_chart_style(fig)
     axis_max = padded_whole_axis_ceiling(float(plotted.max()))
     fig = set_five_division_y_axis(fig, axis_max, decimals=0)
+    fig.update_yaxes(
+        title_text="", tickmode="array", tickvals=[0], ticktext=["0"],
+        showgrid=False, zeroline=True,
+    )
     return add_chart_heading(fig, METRIC_LABELS[metric_code], "Levels")
 
 
@@ -1232,10 +1173,11 @@ def make_metric_growth(metric_code, start_year, end_year):
     growth = series.pct_change(fill_method=None).mul(100).replace(
         [float("inf"), float("-inf")], float("nan")
     )
-    plotted = growth.reindex(years)
+    growth_years = [year for year in years if pd.notna(growth.get(year))]
+    plotted = growth.reindex(growth_years)
     fig = go.Figure(
         go.Bar(
-            x=years,
+            x=growth_years,
             y=plotted,
             name="Growth rate",
             marker_color=[
@@ -1256,25 +1198,28 @@ def make_metric_growth(metric_code, start_year, end_year):
         showlegend=False,
     )
     fig.update_xaxes(
-        tickmode="array", tickvals=years,
-        ticktext=[str(year) for year in years], tickangle=-45,
+        tickmode="array", tickvals=growth_years,
+        ticktext=[str(year) for year in growth_years], tickfont=dict(color="#FFFFFF"), tickangle=-45,
     )
     fig = apply_chart_style(fig)
     valid_growth = plotted.dropna()
     if not valid_growth.empty:
         low, high = float(valid_growth.min()), float(valid_growth.max())
         span = max(high - low, abs(high) * 0.1, abs(low) * 0.1, 1.0)
-        axis_min = min(0.0, low - span * 0.08)
-        axis_max = padded_whole_axis_ceiling(max(high, 0.0))
-        if axis_max <= axis_min:
-            axis_max = axis_min + 1.0
-        ticks = [axis_min + (axis_max - axis_min) * i / 5 for i in range(6)]
+        axis_min = low - 5.0
+        axis_max = high
+        tick_step = (axis_max - axis_min) / 5.0
+        ticks = [axis_min + tick_step * i for i in range(6)]
         fig.update_yaxes(
             range=[axis_min, axis_max], tickmode="array", tickvals=ticks,
             ticktext=[f"{value:.0f}%" for value in ticks], zeroline=True,
             zerolinecolor="#94a3b8",
         )
-    return add_chart_heading(fig, METRIC_LABELS[metric_code], "Growth Rates")
+    fig.update_yaxes(
+        title_text="", tickmode="array", tickvals=[0], ticktext=["0"],
+        showgrid=False, zeroline=True, zerolinecolor="#94a3b8",
+    )
+    return add_chart_heading(fig, METRIC_LABELS[metric_code], "Year-on-year Growth Rate")
 
 
 def make_che_stack_chart(classification_code, start_year, end_year, focused_year=None):
@@ -1413,7 +1358,7 @@ def make_che_stack_chart(classification_code, start_year, end_year, focused_year
                     continue
                 share_annotations.append(
                     dict(
-                        x=year + 0.36,
+                        x=year + 0.34,
                         y=cumulative_shares[index] + share / 2,
                         xref="x",
                         yref="y",
@@ -1433,12 +1378,12 @@ def make_che_stack_chart(classification_code, start_year, end_year, focused_year
         barmode="stack",
         xaxis_title="Share of CHE (%)" if horizontal_focus else "",
         yaxis_title="" if horizontal_focus else "Share of CHE (%)",
-        bargap=0.30, showlegend=True,
+        bargap=0.35, showlegend=True,
         legend=dict(orientation="h", yanchor="top", y=-0.20, x=0),
         annotations=share_annotations,
     )
     fig = apply_chart_style(fig)
-    share_ticks = [0, 20, 40, 60, 80, 100]
+    share_ticks = [0, 25, 50, 75, 100]
     if horizontal_focus:
         fig.update_xaxes(
             range=[0, 100], tickmode="array", tickvals=share_ticks,
@@ -1458,6 +1403,7 @@ def make_che_stack_chart(classification_code, start_year, end_year, focused_year
             range=[0, 100], tickmode="array", tickvals=share_ticks,
             ticktext=[f"{value}%" for value in share_ticks],
         )
+    fig.update_yaxes(showgrid=False)
     title = (
         "Current Health Expenditure by "
         f"{STACK_CLASSIFICATION_LABELS[classification_code]}"
@@ -2163,7 +2109,7 @@ def make_key_findings(code, year):
 app = Dash(
     __name__,
     assets_folder=str(Path(__file__).resolve().parent / "assets"),
-    title="Philippine National Health Account Dashboard",
+    title="HealthStat PH",
     suppress_callback_exceptions=True,
 )
 
@@ -2535,6 +2481,17 @@ app.index_string = """
             transition: none !important;
         }
 
+        @keyframes kpi-enter-from-left {
+            from { transform: translateX(calc(-100% - 10px)); }
+            to { transform: translateX(0); }
+        }
+
+        .kpi-enter-from-left {
+            transition: none !important;
+            animation: kpi-enter-from-left 0.45s ease both;
+            z-index: 6;
+        }
+
         .kpi-arrow {
             flex: 0 0 34px;
             width: 34px;
@@ -2557,9 +2514,9 @@ app.index_string = """
 
         .kpi-card {
             background: linear-gradient(145deg, #2a4568 0%, #355476 100%);
-            border: 1px solid #567494;
-            border-top: 3px solid var(--theme-green);
-            border-left: 3px solid #a4cf95;
+            border: 1px solid var(--theme-blue);
+            border-top: 3px solid var(--theme-blue);
+            border-left: 3px solid var(--theme-blue);
             border-radius: 12px;
             padding: 8px 10px;
             min-width: 0;
@@ -2579,7 +2536,7 @@ app.index_string = """
         #kpi-hospitals-card,
         #kpi-curative-card,
         #kpi-ncr-card {
-            padding-left: 82px;
+            padding-left: 112px;
             padding-right: 10px;
         }
 
@@ -2597,8 +2554,8 @@ app.index_string = """
             position: absolute;
             top: 50%;
             left: 11px;
-            width: 60px;
-            height: 60px;
+            width: 90px;
+            height: 90px;
             transform: translateY(-50%);
             background-position: center;
             background-repeat: no-repeat;
@@ -2692,9 +2649,9 @@ app.index_string = """
 
         .chart-card {
             background: #2a4568;
-            border: 1px solid #567494;
-            border-top: 3px solid var(--theme-green);
-            border-left: 3px solid #a4cf95;
+            border: 1px solid var(--theme-blue);
+            border-top: 3px solid var(--theme-blue);
+            border-left: 3px solid var(--theme-blue);
             border-radius: 12px;
             min-width: 0;
             overflow: hidden;
@@ -2711,13 +2668,13 @@ app.index_string = """
             flex: 0 0 auto;
             margin: 0 12px 0;
             padding: 10px 12px;
-            color: #f3f7ff;
+            color: #A6DDF7;
             background: transparent;
-            border: 1px solid #567494;
-            border-left: 4px solid #a6ddf7;
-            border-radius: 7px;
+            border: 0;
+            border-radius: 0;
             font-size: calc(12px + 4pt);
             line-height: 1.4;
+            text-align: justify;
         }
 
         .chart-card:hover {
@@ -2897,6 +2854,305 @@ app.index_string = """
             }
         }
 
+
+        /* Shared responsive scale: content and spacing grow together. */
+        .app-shell {
+            --ui-small: clamp(10px, calc(0.24vw + 7px), 12px);
+            --ui-body: clamp(13px, calc(0.38vw + 7px), 16px);
+            --ui-medium: clamp(15px, calc(0.42vw + 8px), 18px);
+            --ui-heading: clamp(18px, calc(0.62vw + 8px), 24px);
+            --ui-space: clamp(8px, 0.65vw, 13px);
+            --ui-sidebar: clamp(230px, 17.2vw, 330px);
+            --ui-kpi-height: clamp(104px, 10.5dvh, 116px);
+            --ui-icon-size: clamp(64px, 8.2dvh, 90px);
+            --ui-slot-1: 25%;
+            --ui-slot-2: 50%;
+            --ui-slot-3: 75%;
+            --ui-slot-4: 100%;
+            --ui-slot-5: 125%;
+            --ui-slot-6: 150%;
+            --ui-slot-7: 175%;
+            --ui-slot-8: 200%;
+            --ui-slot-9: 225%;
+            --ui-kpi-width: 25%;
+        }
+
+        .sidebar {
+            flex: 0 0 var(--ui-sidebar);
+            width: var(--ui-sidebar);
+            padding: var(--ui-space);
+            gap: clamp(5px, 0.4vw, 8px);
+        }
+
+        .brand-title { font-size: var(--ui-medium); }
+        .sidebar-section-title,
+        .sidebar-static-item,
+        .nav-button { font-size: var(--ui-small); }
+        .nav-subitem { font-size: clamp(9px, calc(0.22vw + 6px), 11px); }
+        .classification-definition { padding: var(--ui-space); }
+        .classification-definition-title { font-size: clamp(16px, calc(0.38vw + 10px), 20px); }
+        .classification-definition-text { font-size: var(--ui-body); }
+        .control-label { font-size: var(--ui-small); }
+
+        .main-content {
+            height: 100dvh;
+            padding: var(--ui-space);
+            gap: var(--ui-space);
+        }
+
+        .page-title { font-size: var(--ui-heading); }
+        .page-subtitle { font-size: var(--ui-small); }
+        .kpi-carousel {
+            gap: clamp(5px, 0.5vw, 9px);
+            margin-bottom: 0;
+        }
+        .kpi-track { height: var(--ui-kpi-height); }
+        .kpi-slot-0 { left: 5px; }
+        .kpi-slot-1 { left: calc(var(--ui-slot-1) + 5px); }
+        .kpi-slot-2 { left: calc(var(--ui-slot-2) + 5px); }
+        .kpi-slot-3 { left: calc(var(--ui-slot-3) + 5px); }
+        .kpi-slot-4 { left: calc(var(--ui-slot-4) + 5px); }
+        .kpi-slot-5 { left: calc(var(--ui-slot-5) + 5px); }
+        .kpi-slot-6 { left: calc(var(--ui-slot-6) + 5px); }
+        .kpi-slot-7 { left: calc(var(--ui-slot-7) + 5px); }
+        .kpi-slot-8 { left: calc(var(--ui-slot-8) + 5px); }
+        .kpi-slot-9 { left: calc(var(--ui-slot-9) + 5px); }
+        .kpi-card { width: calc(var(--ui-kpi-width) - 10px); }
+        #kpi-the-card,
+        #kpi-che-card,
+        #kpi-hk-card,
+        #kpi-phc-card,
+        #kpi-percapita-card,
+        #kpi-gov-card,
+        #kpi-oop-card,
+        #kpi-hospitals-card,
+        #kpi-curative-card,
+        #kpi-ncr-card {
+            padding-left: calc(var(--ui-icon-size) + 22px);
+            padding-right: clamp(6px, 0.6vw, 12px);
+        }
+        #kpi-the-card::after,
+        #kpi-che-card::after,
+        #kpi-hk-card::after,
+        #kpi-phc-card::after,
+        #kpi-percapita-card::after,
+        #kpi-gov-card::after,
+        #kpi-oop-card::after,
+        #kpi-hospitals-card::after,
+        #kpi-curative-card::after,
+        #kpi-ncr-card::after {
+            left: 10px;
+            width: var(--ui-icon-size);
+            height: var(--ui-icon-size);
+        }
+        .kpi-heading { gap: 4px; margin-bottom: 3px; }
+        .kpi-label {
+            font-size: var(--ui-small);
+            white-space: normal;
+            overflow: visible;
+            text-overflow: clip;
+            line-height: 1.05;
+        }
+        .kpi-value {
+            font-size: clamp(16px, calc(0.65vw + 6px), 21px);
+            line-height: 1.05;
+        }
+        .kpi-secondary-value { font-size: var(--ui-medium); }
+        .kpi-description { font-size: var(--ui-small); margin-top: 2px; }
+        .kpi-arrow {
+            flex-basis: clamp(30px, 2.2vw, 36px);
+            width: clamp(30px, 2.2vw, 36px);
+            height: clamp(30px, 2.2vw, 36px);
+            font-size: clamp(19px, 1.4vw, 23px);
+        }
+
+        .dashboard-grid {
+            gap: var(--ui-space);
+            grid-template-rows:
+                minmax(clamp(190px, 25dvh, 300px), 0.9fr)
+                minmax(clamp(250px, 34dvh, 400px), 1.1fr);
+        }
+        .chart-card { border-radius: clamp(8px, 0.65vw, 12px); }
+        .stack-analysis-text {
+            font-size: clamp(13px, calc(0.36vw + 7px), 17px);
+            line-height: 1.35;
+        }
+        .footer {
+            font-size: clamp(9px, calc(0.18vw + 6px), 11px);
+            margin-top: clamp(4px, 0.45vw, 9px);
+        }
+
+        /* Plot labels scale with viewport while preserving the chart title hierarchy. */
+        .chart-card .xtick text,
+        .chart-card .ytick text,
+        .chart-card .legend text,
+        .chart-card .textpoint text {
+            font-size: clamp(9px, calc(0.22vw + 5px), 12px) !important;
+        }
+        .chart-card .gtitle text {
+            font-size: clamp(16px, calc(0.42vw + 8px), 21px) !important;
+        }
+
+        .brand {
+            flex-direction: row;
+            align-items: center;
+            justify-content: flex-start;
+            gap: 0;
+            min-height: 58px;
+            padding: 5px 6px 10px;
+            border: 0;
+        }
+        .brand-title {
+            display: flex;
+            align-items: baseline;
+            gap: 0 3px;
+            flex-wrap: nowrap;
+            white-space: nowrap;
+            font-size: clamp(24px, 1.7vw, 32px);
+            font-weight: 800;
+            letter-spacing: -0.035em;
+            line-height: 1;
+            text-decoration: none !important;
+        }
+        .brand-title * { text-decoration: none !important; }
+        .brand-health { color: #2E8B57; }
+        .brand-stat { color: #FFD700; }
+        .brand-ph {
+            margin-left: 5px;
+            color: #E34B4B;
+            font-size: inherit;
+            font-weight: 800;
+            letter-spacing: -0.035em;
+        }
+
+        /* Keep every sidebar item reachable at browser zoom and short heights. */
+        .sidebar {
+            overflow-x: hidden;
+            overflow-y: auto;
+            scrollbar-width: thin;
+        }
+        .brand,
+        .sidebar-static-section,
+        .nav-container,
+        .sidebar-controls {
+            flex-shrink: 0;
+        }
+        .nav-container {
+            min-height: max-content;
+            overflow: visible;
+        }
+        .classification-definition {
+            flex: 1 0 auto;
+            overflow: visible;
+        }
+        .classification-definition-text {
+            text-align: justify;
+        }
+
+        @media (min-width: 701px) and (max-width: 1600px) {
+            .app-shell {
+                --ui-slot-1: 33.333%;
+                --ui-slot-2: 66.666%;
+                --ui-slot-3: 100%;
+                --ui-slot-4: 133.333%;
+                --ui-slot-5: 166.666%;
+                --ui-slot-6: 200%;
+                --ui-slot-7: 233.333%;
+                --ui-slot-8: 266.666%;
+                --ui-slot-9: 300%;
+                --ui-kpi-width: 33.333%;
+            }
+        }
+
+        @media (min-width: 1051px) and (max-height: 800px) {
+            body {
+                height: auto;
+                min-height: 100dvh;
+                overflow-y: auto;
+            }
+            .app-shell {
+                height: auto;
+                min-height: 100dvh;
+                overflow: visible;
+            }
+            .sidebar { height: auto; min-height: 100dvh; overflow-y: auto; }
+            .main-content { height: auto; min-height: 100dvh; overflow: visible; }
+            .dashboard-grid {
+                grid-template-rows:
+                    minmax(clamp(190px, 25dvh, 245px), 0.9fr)
+                    minmax(clamp(250px, 34dvh, 320px), 1.1fr);
+            }
+        }
+
+        @media (max-width: 1050px) {
+            body { height: auto; min-height: 100dvh; overflow-y: auto; }
+            .app-shell { height: auto; min-height: 100dvh; overflow: visible; }
+            .sidebar {
+                width: 100%;
+                flex-basis: auto;
+                height: auto;
+                max-height: 36dvh;
+                min-width: 0;
+                overflow-y: auto;
+            }
+            .main-content {
+                height: auto;
+                min-height: 70dvh;
+                overflow: visible;
+            }
+            .app-shell {
+                --ui-slot-1: 33.333%;
+                --ui-slot-2: 66.666%;
+                --ui-slot-3: 100%;
+                --ui-slot-4: 133.333%;
+                --ui-slot-5: 166.666%;
+                --ui-slot-6: 200%;
+                --ui-slot-7: 233.333%;
+                --ui-slot-8: 266.666%;
+                --ui-slot-9: 300%;
+                --ui-kpi-width: 33.333%;
+                --ui-kpi-height: clamp(104px, 11dvh, 116px);
+            }
+            .dashboard-grid {
+                grid-template-rows: minmax(220px, 0.9fr) minmax(300px, 1.1fr);
+            }
+            .chart-levels,
+            .chart-growth { min-height: 220px; }
+            .chart-che-stack { min-height: 330px; }
+        }
+
+        @media (max-width: 700px) {
+            .app-shell {
+                --ui-slot-1: 50%;
+                --ui-slot-2: 100%;
+                --ui-slot-3: 150%;
+                --ui-slot-4: 200%;
+                --ui-slot-5: 250%;
+                --ui-slot-6: 300%;
+                --ui-slot-7: 350%;
+                --ui-slot-8: 400%;
+                --ui-slot-9: 450%;
+                --ui-kpi-width: 50%;
+                --ui-kpi-height: 100px;
+                --ui-icon-size: 66px;
+            }
+            .main-content { min-height: 0; padding: 10px; }
+            .dashboard-grid {
+                grid-template-columns: minmax(0, 1fr);
+                grid-template-rows: minmax(230px, auto) minmax(230px, auto) minmax(360px, auto);
+                grid-template-areas: "levels" "growth" "che-stack";
+            }
+            .chart-levels,
+            .chart-growth { min-height: 230px; }
+            .chart-che-stack { min-height: 360px; }
+            .stack-analysis-text {
+                font-size: 14px;
+                text-align: left;
+                margin: 0 6px;
+                padding: 8px 6px;
+            }
+            .footer { display: block; }
+        }
     </style>
 </head>
 <body>
@@ -2974,16 +3230,11 @@ app.layout = html.Div(
             children=[
                 html.Div(
                     [
-                        html.Img(
-                            src=app.get_asset_url("PNHA Icon.png"),
-                            alt="Philippine National Health Accounts logo",
-                            className="brand-icon",
-                        ),
                         html.Div(
                             [
-                                "Philippine National Health",
-                                html.Br(),
-                                "Account Dashboard",
+                                html.Span("Health", className="brand-health"),
+                                html.Span("Stat", className="brand-stat"),
+                                html.Span("PH", className="brand-ph"),
                             ],
                             className="brand-title",
                         ),
@@ -3593,17 +3844,20 @@ def rotate_kpi_cards(previous_clicks, next_clicks, position):
     old_position = int(position or 0) % card_count
     position = old_position
     if ctx.triggered_id == "kpi-carousel-prev":
-        position = (position - 1) % card_count
-        wrapped_card = position
-    elif ctx.triggered_id == "kpi-carousel-next":
         position = (position + 1) % card_count
         wrapped_card = old_position
+        wrapped_class = " kpi-no-transition"
+    elif ctx.triggered_id == "kpi-carousel-next":
+        position = (position - 1) % card_count
+        wrapped_card = position
+        wrapped_class = " kpi-enter-from-left"
     else:
         wrapped_card = None
+        wrapped_class = ""
 
     classes = [
         "kpi-card kpi-slot-" + str((card_index - position) % card_count)
-        + (" kpi-no-transition" if card_index == wrapped_card else "")
+        + (wrapped_class if card_index == wrapped_card else "")
         for card_index in range(card_count)
     ]
     return (*classes, position)
@@ -3619,3 +3873,4 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=8050,
     )
+
