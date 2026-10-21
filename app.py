@@ -2955,7 +2955,7 @@ app.index_string = """
             padding: 0 !important;
             border: 1px solid #6b93bc !important;
             border-radius: 8px !important;
-            background: #2a4568 !important;
+            background: #172f4d !important;
             color: #f3f6fa !important;
             font: 600 12px Arial, sans-serif !important;
             box-sizing: border-box;
@@ -2965,6 +2965,10 @@ app.index_string = """
             height: 27px !important;
             min-height: 27px !important;
             padding: 0 8px !important;
+            border: 0 !important;
+            border-radius: 7px !important;
+            background: #172f4d !important;
+            color: #f3f6fa !important;
             font: 600 12px Arial, sans-serif !important;
         }
         .chart-contribution .contribution-year-dropdown .dash-dropdown-value {
@@ -2982,6 +2986,11 @@ app.index_string = """
             background: #4C9F38 !important;
             border-color: #86BF75 !important;
             outline: none !important;
+        }
+        .chart-contribution .contribution-year-dropdown:hover .dash-dropdown-trigger,
+        .chart-contribution .contribution-year-dropdown:focus-within .dash-dropdown-trigger {
+            background: #4C9F38 !important;
+            color: #f3f6fa !important;
         }
         .chart-contribution .contribution-year-dropdown:focus {
             border: 1px solid #86BF75 !important;
