@@ -1607,7 +1607,7 @@ def make_che_contribution_chart(classification_code, start_year, end_year):
     def two_line_label(label):
         return "<br>".join(textwrap.wrap(
             str(label),
-            width=44,
+            width=34,
             max_lines=2,
             placeholder="…",
             break_long_words=False,
@@ -1626,7 +1626,7 @@ def make_che_contribution_chart(classification_code, start_year, end_year):
     fig = apply_chart_style(fig)
     for category in category_labels:
         fig.add_annotation(
-            x=0.385,
+            x=0.285,
             y=category,
             xref="paper",
             yref="y",
@@ -1638,7 +1638,7 @@ def make_che_contribution_chart(classification_code, start_year, end_year):
             font=dict(size=11, color="#e6edf7"),
         )
     fig.update_xaxes(
-        domain=[0.4, 1],
+        domain=[0.3, 1],
         title_text="Change (PhP billion)",
         range=[negative_floor, positive_ceiling],
         showgrid=True,
@@ -4619,4 +4619,5 @@ if __name__ == "__main__":
         host="0.0.0.0",
         port=8050,
     )
+
 
