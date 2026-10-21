@@ -4159,7 +4159,7 @@ app.layout = html.Div(
                         html.Br(),
                         "Coverage: 2014–2025. Values are in Philippine pesos.",
                         html.Br(),
-                        "Prepared by: E-conomist · Last Update: October 19, 2026",
+                        "Prepared by: E-conomist · Last Update: 21 October 2026",
                     ],
                     className="footer",
                 ),
