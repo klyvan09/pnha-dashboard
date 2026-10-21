@@ -114,6 +114,20 @@ CHE_CLASSIFICATION_DEFINITIONS = {
     "INC": "Presents the distribution of health expenditure according to the income groups of individuals receiving or benefiting from health care services, showing how health resources are distributed across different economic groups.",
 }
 
+CHE_CLASSIFICATION_QUESTIONS = {
+    "FS": "Where does the money used to pay for health care come from?",
+    "FSRI": "Which institutions provide the revenues used by health financing schemes?",
+    "FA": "Which organizations manage or channel the money used to finance health care?",
+    "HF": "Through what schemes and arrangements is health care financed?",
+    "FP": "What resources and inputs are paid for to deliver health care?",
+    "HP": "Which providers deliver health care, and how is spending distributed among them?",
+    "HC": "What types of health services and activities is the spending used for?",
+    "AGESEX": "How is health spending distributed across age groups?",
+    "DIS": "Which diseases and health conditions receive health spending?",
+    "REG": "How is health spending distributed across regions?",
+    "INC": "How is health spending distributed across income groups?",
+}
+
 CHE_ANALYSIS_FOCUS = {
     "FS": (
         "Transfers from government domestic revenue (allocated to health purposes)",
@@ -443,7 +457,34 @@ METRIC_LABELS = {
     "CHE": "Current Health Expenditure",
     "PERCAPITA": "Current Health Expenditure per Capita",
     "HK": "Health Capital Formation",
-    "PHC": "Primary Health Care",
+    "PHC": "Primary Health Care Expenditure",
+}
+
+METRIC_DEFINITIONS = {
+    "THE": (
+        "In the traditional SHA 1.0 approach, Total Health Expenditure is the "
+        "sum of Current Health Expenditure and gross capital formation in health care. "
+        "SHA 2011 recommends presenting current consumption and investment separately."
+    ),
+    "CHE": (
+        "Under SHA 2011, Current Health Expenditure is the final consumption expenditure "
+        "of resident units on health care goods and services. It includes goods and services "
+        "provided directly to individuals and collective health care services."
+    ),
+    "PERCAPITA": (
+        "Average Current Health Expenditure per person, calculated by dividing CHE "
+        "by the population."
+    ),
+    "HK": (
+        "Under SHA 2011, health capital formation covers health care providers’ acquisition "
+        "of produced assets used repeatedly or continuously for more than one year to "
+        "produce health services. PNHA uses HK as its capital formation classification."
+    ),
+    "PHC": (
+        "Primary Health Care Expenditure covers essential health services focused on "
+        "health promotion, disease prevention, treatment of common illnesses, and basic "
+        "rehabilitative care."
+    ),
 }
 
 METRIC_SERIES = {
@@ -1159,7 +1200,9 @@ def make_metric_levels(metric_code, start_year, end_year):
         title_text="", tickmode="array", tickvals=[0], ticktext=["0"],
         showgrid=False, zeroline=True,
     )
-    return add_chart_heading(fig, METRIC_LABELS[metric_code], "Levels")
+    fig = add_chart_heading(fig, METRIC_LABELS[metric_code], "Levels")
+    fig.update_layout(title_text="")
+    return fig
 
 
 def make_metric_growth(metric_code, start_year, end_year):
@@ -1220,7 +1263,9 @@ def make_metric_growth(metric_code, start_year, end_year):
         title_text="", tickmode="array", tickvals=[0], ticktext=["0"],
         showgrid=False, zeroline=True, zerolinecolor="#94a3b8",
     )
-    return add_chart_heading(fig, METRIC_LABELS[metric_code], "Year-on-year Growth Rate")
+    fig = add_chart_heading(fig, METRIC_LABELS[metric_code], "Year-on-year Growth Rate")
+    fig.update_layout(title_text="")
+    return fig
 
 
 def make_che_stack_chart(classification_code, start_year, end_year, focused_year=None):
@@ -1249,7 +1294,13 @@ def make_che_stack_chart(classification_code, start_year, end_year, focused_year
         for row in frame.itertuples(index=False):
             totals[row.Category] = totals.get(row.Category, 0.0) + float(row.Amount)
     ordered_categories = sorted(totals, key=totals.get, reverse=True)
-    if classification_code == "REG":
+    if horizontal_focus:
+        # Focused single-year view can show every source category/region;
+        # grouping is only needed to keep the multi-year series readable.
+        keep_categories = ordered_categories
+        other_label = "Other Regions" if classification_code == "REG" else "Other categories"
+        other_categories = set()
+    elif classification_code == "REG":
         other_label = "Other Regions"
         named_regions = [
             category for category in ordered_categories
@@ -1313,7 +1364,7 @@ def make_che_stack_chart(classification_code, start_year, end_year, focused_year
         share_labels = [
             f"{share:.1f}%" if total > 0 else ""
             for share, total in zip(shares, year_totals)
-        ] if highlighted else None
+        ] if primary_highlight and not horizontal_focus else None
         trace_x = (
             shares
             if horizontal_focus
@@ -1340,11 +1391,12 @@ def make_che_stack_chart(classification_code, start_year, end_year, focused_year
                     else stack_palette[category_index % len(stack_palette)]
                 ),
                 text=share_labels,
-                textposition=(
-                    "outside" if highlighted and horizontal_focus else "none"
-                ),
+                textposition="none",
                 insidetextanchor="middle",
-                textfont=dict(color="#14213D", size=11),
+                textfont=dict(
+                    color="#14213D",
+                    size=11,
+                ),
                 customdata=customdata,
                 hovertemplate=(
                     (f"Year: {focused_year}<br>" if horizontal_focus else "Year: %{x}<br>")
@@ -1353,7 +1405,26 @@ def make_che_stack_chart(classification_code, start_year, end_year, focused_year
                 ),
             )
         )
-        if highlighted and not horizontal_focus:
+        if horizontal_focus:
+            share = shares[0] if shares else 0
+            total = year_totals[0] if year_totals else 0
+            if total > 0 and share > 0:
+                share_annotations.append(
+                    dict(
+                        x=cumulative_shares[0] + share / 2,
+                        y=0,
+                        xref="x",
+                        yref="y",
+                        text=f"{share:.1f}%",
+                        showarrow=False,
+                        xanchor="center",
+                        yanchor="middle",
+                        font=dict(color="#F3F7FF", size=10),
+                        bgcolor="rgba(23, 32, 51, 0.72)",
+                        borderpad=1,
+                    )
+                )
+        elif primary_highlight:
             for index, (year, share, total) in enumerate(zip(years, shares, year_totals)):
                 if total <= 0 or share <= 0:
                     continue
@@ -1377,6 +1448,7 @@ def make_che_stack_chart(classification_code, start_year, end_year, focused_year
         ]
     fig.update_layout(
         barmode="stack",
+        uniformtext=dict(minsize=8, mode="show"),
         xaxis_title="Share of CHE (%)" if horizontal_focus else "",
         yaxis_title="" if horizontal_focus else "Share of CHE (%)",
         bargap=0.35, showlegend=True,
@@ -1391,6 +1463,10 @@ def make_che_stack_chart(classification_code, start_year, end_year, focused_year
             ticktext=[f"{value}%" for value in share_ticks],
         )
         fig.update_yaxes(
+            type="category",
+            categoryorder="array",
+            categoryarray=[str(focused_year)],
+            range=[-0.5, 0.5],
             tickmode="array", tickvals=[str(focused_year)],
             ticktext=[str(focused_year)],
         )
@@ -1411,6 +1487,7 @@ def make_che_stack_chart(classification_code, start_year, end_year, focused_year
     )
     subtitle = f"Share to total · {focused_year}" if horizontal_focus else "Share to total"
     fig = add_chart_heading(fig, title, subtitle, top_margin=64)
+    fig.update_layout(title_text="")
     # Reserve a separate band below the rotated year labels for the legend.
     fig.update_layout(
         margin=dict(l=35, r=25, t=64, b=96),
@@ -1432,7 +1509,7 @@ def make_che_contribution_chart(classification_code, start_year, end_year):
 
     subtitle = (
         f"{STACK_CLASSIFICATION_LABELS[classification_code]} · "
-        f"{start_year}–{end_year} · PhP billion"
+        f"{start_year}–{end_year}"
     )
     if start_year == end_year:
         fig = make_empty_figure("Choose two different years to compare changes.")
@@ -1507,14 +1584,30 @@ def make_che_contribution_chart(classification_code, start_year, end_year):
             ),
         ))
 
-    largest_change = max(abs(value / 1000) for _, value in selected)
-    axis_limit = max(largest_change * 1.35, 1.0)
-    # Keep the category labels in a fixed left column and reserve the
-    # remaining two-thirds of the plot width for the bars.
+    increases = [value / 1000 for _, value in selected if value > 0]
+    decreases = [abs(value / 1000) for _, value in selected if value < 0]
+
+    max_increase = max(increases, default=0)
+    lower_50 = floor(max_increase / 50) * 50
+    distance_from_lower_50 = max_increase - lower_50
+    distance_to_upper_50 = lower_50 + 50 - max_increase
+    closer_to_lower_by_20 = (
+        distance_to_upper_50 - distance_from_lower_50
+    ) >= 20
+    positive_ceiling = lower_50 + (50 if closer_to_lower_by_20 else 100)
+    max_decrease = max(decreases, default=0)
+    if max_decrease < 10:
+        negative_floor = -50
+    elif max_decrease > 100:
+        negative_floor = -300
+    else:
+        negative_floor = -150
+
+    # Keep category labels in the left 40% and reserve the right 60% for bars.
     def two_line_label(label):
         return "<br>".join(textwrap.wrap(
             str(label),
-            width=27,
+            width=44,
             max_lines=2,
             placeholder="…",
             break_long_words=False,
@@ -1533,7 +1626,7 @@ def make_che_contribution_chart(classification_code, start_year, end_year):
     fig = apply_chart_style(fig)
     for category in category_labels:
         fig.add_annotation(
-            x=0.315,
+            x=0.385,
             y=category,
             xref="paper",
             yref="y",
@@ -1545,9 +1638,9 @@ def make_che_contribution_chart(classification_code, start_year, end_year):
             font=dict(size=11, color="#e6edf7"),
         )
     fig.update_xaxes(
-        domain=[1 / 3, 1],
+        domain=[0.4, 1],
         title_text="Change (PhP billion)",
-        range=[-axis_limit, axis_limit],
+        range=[negative_floor, positive_ceiling],
         showgrid=True,
         gridcolor="#3b4f6c",
         zeroline=True,
@@ -2782,6 +2875,71 @@ app.index_string = """
 
         .chart-metric { grid-area: metric; position: relative; }
         .chart-contribution { grid-area: contribution; position: relative; }
+        .metric-chart-heading {
+            position: absolute;
+            z-index: 11;
+            top: 8px;
+            left: 14px;
+            max-width: calc(100% - 112px);
+            color: #f3f6fa;
+            pointer-events: none;
+        }
+        .metric-heading-row {
+            display: flex;
+            align-items: center;
+            gap: 7px;
+            min-width: 0;
+        }
+        .metric-heading-title {
+            min-width: 0;
+            font-size: clamp(16px, calc(0.42vw + 8px), 21px);
+            font-weight: 700;
+            line-height: 1.15;
+        }
+        .metric-heading-subtitle {
+            margin-top: 1px;
+            color: #e6edf7;
+            font-size: 13px;
+            line-height: 1.2;
+        }
+        .metric-info {
+            position: relative;
+            flex: 0 0 auto;
+            pointer-events: auto;
+        }
+        .metric-info-icon {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            width: 17px;
+            height: 17px;
+            border: 1px solid #9fc7e8;
+            border-radius: 50%;
+            color: #d9efff;
+            background: #172f4d;
+            font: 700 11px Arial, sans-serif;
+            line-height: 1;
+            cursor: pointer;
+            list-style: none;
+        }
+        .metric-info-icon::-webkit-details-marker { display: none; }
+        .metric-info-popover {
+            position: absolute;
+            top: calc(100% + 7px);
+            left: 0;
+            z-index: 20;
+            width: min(300px, calc(100vw - 48px));
+            padding: 10px 12px;
+            border: 1px solid #6b93bc;
+            border-radius: 8px;
+            color: #f3f6fa;
+            background: #172f4d;
+            box-shadow: 0 8px 20px rgba(0, 0, 0, 0.3);
+            font-size: 13px;
+            font-weight: 400;
+            line-height: 1.45;
+        }
+        .metric-info:not([open]) .metric-info-popover { display: none; }
         .contribution-year-control {
             position: absolute;
             z-index: 10;
@@ -2797,7 +2955,7 @@ app.index_string = """
             padding: 0 !important;
             border: 1px solid #6b93bc !important;
             border-radius: 8px !important;
-            background: #172f4d !important;
+            background: #2a4568 !important;
             color: #f3f6fa !important;
             font: 600 12px Arial, sans-serif !important;
             box-sizing: border-box;
@@ -2829,6 +2987,61 @@ app.index_string = """
             border: 1px solid #86BF75 !important;
             outline: none !important;
         }
+        body:has(.contribution-year-dropdown[data-state='open'])
+        .dash-dropdown-content {
+            background: #2a4568 !important;
+            border: 1px solid #6b93bc !important;
+            color: #f3f6fa !important;
+        }
+        body:has(.contribution-year-dropdown[data-state='open'])
+        .dash-dropdown-option {
+            background: #2a4568 !important;
+            color: #f3f6fa !important;
+            font: 600 12px Arial, sans-serif !important;
+        }
+        body:has(.contribution-year-dropdown[data-state='open'])
+        .dash-dropdown-option:hover,
+        body:has(.contribution-year-dropdown[data-state='open'])
+        .dash-dropdown-option:focus,
+        body:has(.contribution-year-dropdown[data-state='open'])
+        .dash-dropdown-option[aria-selected='true'] {
+            background: #4C9F38 !important;
+            color: #ffffff !important;
+        }
+        body:has(.contribution-year-dropdown[data-state='open'])
+        .dash-dropdown-content,
+        body:has(.contribution-year-dropdown[data-state='open'])
+        .dash-dropdown-options {
+            scrollbar-color: #6b93bc #2a4568;
+            scrollbar-width: thin;
+        }
+        body:has(.contribution-year-dropdown[data-state='open'])
+        .dash-dropdown-content::-webkit-scrollbar,
+        body:has(.contribution-year-dropdown[data-state='open'])
+        .dash-dropdown-options::-webkit-scrollbar {
+            width: 8px;
+        }
+        body:has(.contribution-year-dropdown[data-state='open'])
+        .dash-dropdown-content::-webkit-scrollbar-track,
+        body:has(.contribution-year-dropdown[data-state='open'])
+        .dash-dropdown-options::-webkit-scrollbar-track {
+            background: #2a4568;
+            border-radius: 8px;
+        }
+        body:has(.contribution-year-dropdown[data-state='open'])
+        .dash-dropdown-content::-webkit-scrollbar-thumb,
+        body:has(.contribution-year-dropdown[data-state='open'])
+        .dash-dropdown-options::-webkit-scrollbar-thumb {
+            background: #6b93bc;
+            border-radius: 8px;
+            border: 2px solid #2a4568;
+        }
+        body:has(.contribution-year-dropdown[data-state='open'])
+        .dash-dropdown-content::-webkit-scrollbar-thumb:hover,
+        body:has(.contribution-year-dropdown[data-state='open'])
+        .dash-dropdown-options::-webkit-scrollbar-thumb:hover {
+            background: #86BF75;
+        }
         .chart-contribution .Select-menu-outer { z-index: 9999; }
         .chart-contribution .Select-option:hover,
         .chart-contribution .Select-option.is-focused,
@@ -2857,10 +3070,43 @@ app.index_string = """
         }
         .chart-che-stack {
             grid-area: che-stack;
+            position: relative;
             display: flex;
             flex-direction: column;
             min-height: 0;
             padding-bottom: 12px;
+        }
+        .stack-chart-heading {
+            position: absolute;
+            z-index: 11;
+            top: 8px;
+            left: 16px;
+            max-width: 52%;
+            color: #f3f6fa;
+            pointer-events: none;
+        }
+        .stack-chart-heading .metric-heading-title {
+            font-size: clamp(16px, calc(0.42vw + 8px), 21px);
+        }
+        .stack-chart-heading .metric-heading-subtitle {
+            font-size: 13px;
+        }
+
+        .stack-chart-hint {
+            position: absolute;
+            z-index: 10;
+            top: 10px;
+            right: 16px;
+            max-width: 45%;
+            overflow: hidden;
+            color: #C4EBFF;
+            font-size: clamp(9px, 0.65vw, 12px);
+            font-style: italic;
+            line-height: 1.25;
+            text-align: right;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            pointer-events: none;
         }
 
         .stack-chart-plot {
@@ -2888,7 +3134,7 @@ app.index_string = """
             height: calc(2.7em + 20px);
             flex: 0 0 auto;
             overflow: hidden;
-            margin: 0 12px 0;
+            margin: 0 12px 12px;
             padding: 10px 12px;
             color: #C4EBFF;
             background: linear-gradient(
@@ -3379,7 +3625,7 @@ app.index_string = """
                 font-size: calc(14px + 2pt);
                 text-align: justify;
                 height: calc(2.7em + 16px);
-                margin: 0 6px;
+                margin: 0 8px 10px;
                 padding: 8px 6px;
             }
             .footer { display: block; }
@@ -3491,12 +3737,12 @@ app.layout = html.Div(
                 html.Div(
                     [
                         html.Div(
-                            CHE_CLASSIFICATION_DEFINITION_TITLES["FS"],
+                            "What question does this CHE classification answer?",
                             id="che-classification-definition-title",
                             className="classification-definition-title",
                         ),
                         html.Div(
-                            CHE_CLASSIFICATION_DEFINITIONS["FS"],
+                            CHE_CLASSIFICATION_QUESTIONS["FS"],
                             id="che-classification-definition",
                             className="classification-definition-text",
                         ),
@@ -3753,6 +3999,38 @@ app.layout = html.Div(
                         html.Div(
                             className="chart-card chart-metric",
                             children=[
+                                html.Div(
+                                    [
+                                        html.Div(
+                                            [
+                                                html.Div(
+                                                    id="metric-chart-heading-title",
+                                                    className="metric-heading-title",
+                                                ),
+                                                html.Details(
+                                                    [
+                                                        html.Summary(
+                                                            "i",
+                                                            className="metric-info-icon",
+                                                            title="Show measure definition",
+                                                        ),
+                                                        html.Div(
+                                                            id="metric-chart-definition",
+                                                            className="metric-info-popover",
+                                                        ),
+                                                    ],
+                                                    className="metric-info",
+                                                ),
+                                            ],
+                                            className="metric-heading-row",
+                                        ),
+                                        html.Div(
+                                            id="metric-chart-heading-subtitle",
+                                            className="metric-heading-subtitle",
+                                        ),
+                                    ],
+                                    className="metric-chart-heading",
+                                ),
                                 html.Button(
                                     "Levels",
                                     id="metric-view-toggle",
@@ -3796,6 +4074,43 @@ app.layout = html.Div(
                         ),
                         html.Div(
                             children=[
+                                html.Div(
+                                    [
+                                        html.Div(
+                                            [
+                                                html.Div(
+                                                    id="che-stack-heading-title",
+                                                    className="metric-heading-title",
+                                                ),
+                                                html.Details(
+                                                    [
+                                                        html.Summary(
+                                                            "i",
+                                                            className="metric-info-icon",
+                                                            title="Show classification definition",
+                                                        ),
+                                                        html.Div(
+                                                            id="che-stack-definition",
+                                                            className="metric-info-popover",
+                                                        ),
+                                                    ],
+                                                    className="metric-info",
+                                                ),
+                                            ],
+                                            className="metric-heading-row",
+                                        ),
+                                        html.Div(
+                                            id="che-stack-heading-subtitle",
+                                            className="metric-heading-subtitle",
+                                        ),
+                                    ],
+                                    className="stack-chart-heading",
+                                ),
+                                html.Div(
+                                    "Click or tap a year to focus its breakdown.",
+                                    id="che-stack-interaction-hint",
+                                    className="stack-chart-hint",
+                                ),
                                 html.Div(
                                     dcc.Graph(
                                         id="che-stack-chart",
@@ -3866,6 +4181,28 @@ def update_selected_metric(n_clicks):
 
 
 @app.callback(
+    Output("metric-chart-heading-title", "children"),
+    Output("metric-chart-heading-subtitle", "children"),
+    Output("metric-chart-definition", "children"),
+    Input("selected-metric", "data"),
+    Input("metric-view-mode", "data"),
+)
+def update_metric_chart_heading(selected_metric, view_mode):
+    if selected_metric not in METRIC_LABELS:
+        selected_metric = "THE"
+    subtitle = (
+        "Year-on-year Growth Rate"
+        if view_mode == "growth"
+        else "Levels"
+    )
+    return (
+        METRIC_LABELS[selected_metric],
+        subtitle,
+        METRIC_DEFINITIONS[selected_metric],
+    )
+
+
+@app.callback(
     Output("selected-che-classification", "data"),
     Input(
         {
@@ -3887,12 +4224,34 @@ def update_selected_che_classification(n_clicks):
     Input("selected-che-classification", "data"),
 )
 def update_che_classification_definition(classification_code):
-    if classification_code not in CHE_CLASSIFICATION_DEFINITIONS:
+    if classification_code not in CHE_CLASSIFICATION_QUESTIONS:
         classification_code = "FS"
     return (
-        CHE_CLASSIFICATION_DEFINITION_TITLES[classification_code],
-        CHE_CLASSIFICATION_DEFINITIONS[classification_code],
+        "What question does this CHE classification answer?",
+        CHE_CLASSIFICATION_QUESTIONS[classification_code],
     )
+
+
+@app.callback(
+    Output("che-stack-heading-title", "children"),
+    Output("che-stack-heading-subtitle", "children"),
+    Output("che-stack-definition", "children"),
+    Input("selected-che-classification", "data"),
+    Input("che-stack-focused-year", "data"),
+)
+def update_che_stack_heading(classification_code, focused_year):
+    if classification_code not in CHE_CLASSIFICATION_DEFINITIONS:
+        classification_code = "FS"
+    title = (
+        "Current Health Expenditure by "
+        f"{STACK_CLASSIFICATION_LABELS[classification_code]}"
+    )
+    subtitle = (
+        f"Share to total · {focused_year}"
+        if focused_year is not None
+        else "Share to total"
+    )
+    return title, subtitle, CHE_CLASSIFICATION_DEFINITIONS[classification_code]
 
 
 @app.callback(
@@ -3980,6 +4339,16 @@ def toggle_che_stack_year(click_data, focused_year, start_year, end_year):
     if end_year is not None and clicked_year > end_year:
         return no_update
     return clicked_year if clicked_year in YEARS else no_update
+
+
+@app.callback(
+    Output("che-stack-interaction-hint", "children"),
+    Input("che-stack-focused-year", "data"),
+)
+def update_che_stack_interaction_hint(focused_year):
+    if focused_year is not None:
+        return "Click or tap the chart to return to all years."
+    return "Click or tap a year to focus its breakdown."
 
 
 # ============================================================
